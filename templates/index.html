@@ -1,0 +1,599 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Photo Sorter Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+      body { padding: 16px; background: radial-gradient(circle at 20% 20%, #f5f7fb 0, #edf1fb 40%, #f9fbff 100%); font-family: 'Space Grotesk', 'Segoe UI', sans-serif; }
+      .app-header { background: linear-gradient(120deg,#3f68ff,#7294ff,#89c8ff); color: #fff; padding: 18px; border-radius: 16px; margin-bottom: 20px; box-shadow: 0 18px 35px rgba(63,104,255,0.25); }
+      .sample-thumb { height: 90px; object-fit: cover; border-radius: 10px; box-shadow: 0 6px 18px rgba(0,0,0,0.12); }
+      .card-grouping { min-width: 220px; border: 1px solid #e1e8ff; box-shadow: 0 10px 24px rgba(0,0,0,0.08); border-radius: 14px; }
+      .explorer { background: #fff; border-radius: 14px; padding: 14px; box-shadow: 0 20px 40px rgba(29,58,125,0.08); height: 64vh; overflow:auto; border:1px solid #e3e8ff; }
+      .folder-item { cursor:pointer; padding:10px; border-radius:10px; transition: background 0.15s ease, transform 0.1s ease; font-weight:500; color:#1e2b50; }
+      .folder-item:hover { background: rgba(91,140,255,0.08); transform: translateX(2px); }
+      .folder-item.selected { background: rgba(91,140,255,0.15); border: 1px solid #9bb7ff; }
+      .breadcrumb { margin-bottom: 8px; font-size: 0.9rem; }
+      .summary-card { border: 1px solid #e1e8ff; box-shadow: 0 14px 30px rgba(41,72,152,0.08); border-radius: 14px; }
+      .pill { display:inline-block; padding:4px 10px; border-radius:20px; background:#eef2ff; color:#4056a1; font-weight:600; }
+      .btn-ghost { border:1px dashed #b8c5ff; color:#4056a1; background: #f5f7ff; }
+      .form-section { background:#fff; border-radius:16px; box-shadow:0 18px 36px rgba(35,51,92,0.1); border:1px solid #e1e7ff; }
+      .busy-overlay { position: fixed; inset: 0; background: rgba(255,255,255,0.85); backdrop-filter: blur(2px); display: none; align-items: center; justify-content: center; z-index: 2000; }
+      .busy-card { display:flex; align-items:center; gap:12px; padding:14px 18px; background:#fff; border:1px solid #e7ecf5; border-radius:12px; box-shadow:0 10px 26px rgba(0,0,0,0.12); }
+      #explorerDisplay { font-size: 0.85rem; color:#5b647d; background:#f5f7ff; padding:6px 10px; border-radius:8px; margin-bottom:8px; }
+      #explorerList::-webkit-scrollbar { width:8px; }
+      #explorerList::-webkit-scrollbar-thumb { background:#c4ceff; border-radius:8px; }
+    </style>
+  </head>
+  <body>
+    <div class="container-fluid">
+      <div class="app-header d-flex justify-content-between align-items-center">
+        <div>
+          <h3 class="mb-0">Photo Sorter</h3>
+          <div class="small opacity-75">Preview, confirm and copy your photos</div>
+        </div>
+        <div>
+          <button class="btn btn-sm btn-light me-2" id="openExplorerBtn">Browse folders</button>
+          <a class="btn btn-sm btn-outline-light" href="/">Help</a>
+        </div>
+      </div>
+
+      <div class="row g-3">
+        <div class="col-md-3">
+          <div class="explorer" id="explorer">
+            <div class="mb-2 d-flex justify-content-between align-items-center">
+              <strong>Explorer</strong>
+              <div class="btn-group btn-group-sm" role="group">
+                <button class="btn btn-ghost" id="homeBtn" title="Home">Home</button>
+                <button class="btn btn-ghost" id="upBtn" title="Up">Up</button>
+              </div>
+            </div>
+            <div class="mb-2">
+              <input class="form-control form-control-sm" id="pathInput" placeholder="/mnt/c/Users/..." />
+            </div>
+            <div id="explorerDisplay" class="text-truncate"></div>
+            <nav aria-label="breadcrumb" style="--bs-breadcrumb-divider: '›';">
+              <ol class="breadcrumb mb-2" id="explorerBreadcrumbs">
+                <!-- breadcrumbs populated here -->
+              </ol>
+            </nav>
+            <div id="explorerList">Loading...</div>
+          </div>
+        </div>
+        <div class="col-md-9">
+          <div class="form-section mb-3 p-3">
+            <form id="previewForm" action="/preview" method="post" class="row g-3">
+              <div class="col-md-7">
+                <label class="form-label">Source folder</label>
+                <input class="form-control" id="sourceInput" type="text" name="source" placeholder="C:\\path\\to\\photos" required>
+              </div>
+              <div class="col-md-5 d-flex align-items-end">
+                <button type="button" class="btn btn-outline-secondary w-100" id="useExplorerSource">Use selected in Explorer</button>
+              </div>
+              <div class="col-md-7">
+                <label class="form-label">Destination folder</label>
+                <input class="form-control" id="destInput" type="text" name="dest" placeholder="C:\\path\\to\\sorted_photos">
+              </div>
+              <div class="col-md-5 d-flex align-items-end">
+                <button type="button" class="btn btn-outline-secondary w-100" id="destSameBtn">Set dest near source</button>
+              </div>
+              <div class="col-12 d-flex gap-2">
+                <button type="submit" class="btn btn-primary flex-grow-1" id="runPreviewBtn">Preview (dry-run)</button>
+              </div>
+            </form>
+          </div>
+
+          <div id="summaryArea" class="row g-3 mb-3" style="display:none">
+            <div class="col-md-3"><div class="card summary-card"><div class="card-body"><div class="text-muted small">Input files</div><div class="fs-3" id="sumInput">0</div></div></div></div>
+            <div class="col-md-3"><div class="card summary-card"><div class="card-body"><div class="text-muted small">To copy</div><div class="fs-3" id="sumCopy">0</div></div></div></div>
+            <div class="col-md-3"><div class="card summary-card"><div class="card-body"><div class="text-muted small">Duplicates (skipped)</div><div class="fs-3 text-warning" id="sumDup">0</div></div></div></div>
+            <div class="col-md-3"><div class="card summary-card"><div class="card-body"><div class="text-muted small">Failed/Issues</div><div class="fs-3 text-danger" id="sumFail">0</div></div></div></div>
+          </div>
+
+          <div id="previewArea"></div>
+        </div>
+      </div>
+
+      <!-- Confirmation Modal -->
+      <div class="modal fade" id="confirmModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title">Confirm Copy</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <p id="confirmText">Are you sure you want to copy these files?</p>
+              <div id="confirmDetails" class="small text-muted"></div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+              <button type="button" id="confirmRunBtn" class="btn btn-primary">Start Copy</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Progress Modal -->
+      <div class="modal fade" id="progressModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title">Copy In Progress</h5>
+            </div>
+            <div class="modal-body">
+              <div id="progressStatus" class="mb-2">Starting…</div>
+              <div class="progress mb-2"><div id="progressBar" class="progress-bar" role="progressbar" style="width:0%"></div></div>
+              <div class="d-flex justify-content-between small text-muted"><span id="processedCount">0</span><span id="totalCount">/0</span></div>
+              <div class="mt-2 small text-muted">
+                <div>Destination: <span id="jobDestPath">-</span></div>
+                <div>Duplicates review: <span id="duplicatesFolderPath">-</span></div>
+                <div>Group: <span id="currentGroup">-</span></div>
+                <div>Current file: <span id="currentFile">-</span></div>
+                <div>Copied: <span id="copiedCount">0</span> • Duplicates (skipped): <span id="duplicatesCount">0</span> • Failed: <span id="failedCount">0</span></div>
+                <div>Remaining: <span id="remainingCount">-</span> • Accounted: <span id="accountedCount">-</span></div>
+                <div>Start: <span id="startTime">-</span> • Finish: <span id="finishTime">-</span></div>
+                <div>Speed: <span id="speedFps">-</span> files/sec • ETA: <span id="etaSeconds">-</span> sec</div>
+                <div>Errors: <span id="errorsCount">0</span> <a href="#" id="showErrorsLink" style="display:none">(view)</a></div>
+                <div id="errorsList" class="mt-2 small text-danger" style="display:none; max-height:120px; overflow:auto"></div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+              <a href="#" id="statusLinkBtn" class="btn btn-light" target="_blank" style="display:none">Open Status JSON</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="busyOverlay" class="busy-overlay">
+      <div class="busy-card">
+        <div class="spinner-border text-primary" role="status" aria-hidden="true"></div>
+        <div>
+          <div class="fw-semibold" id="busyTitle">Working...</div>
+          <div class="small text-muted" id="busyDetail">Reviewing photos…</div>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+      let previewPoll = null;
+
+      async function fetchJobJson(jobId) {
+        if (!jobId) return null;
+        const resp = await fetch(`/api/status?job=${jobId}`);
+        if (!resp.ok) return null;
+        return await resp.json();
+      }
+
+      function downloadJson(obj, name) {
+        const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = name;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      }
+
+      function setBusy(isBusy, title, detail) {
+        const overlay = document.getElementById('busyOverlay');
+        if (!overlay) return;
+        if (isBusy) {
+          overlay.style.display = 'flex';
+          document.getElementById('busyTitle').textContent = title || 'Working...';
+          document.getElementById('busyDetail').textContent = detail || '';
+        } else {
+          overlay.style.display = 'none';
+          document.getElementById('busyDetail').textContent = '';
+        }
+      }
+
+      function setPreviewButtonsDisabled(disabled) {
+        document.querySelectorAll('#previewForm button').forEach(btn => btn.disabled = disabled);
+      }
+
+      function getResolvedDest(fallback) {
+        const destInput = document.getElementById('destInput');
+        const liveValue = destInput ? destInput.value.trim() : '';
+        return liveValue || (fallback || '').trim();
+      }
+
+      function ensureDestinationReady(destValue) {
+        if (!destValue) {
+          alert('Please provide a destination folder before starting the copy.');
+          const destInput = document.getElementById('destInput');
+          if (destInput) destInput.focus();
+          return false;
+        }
+        return true;
+      }
+
+      function renderPreview(data, source, dest) {
+        const groups = data.groups || [];
+        const groupTotal = groups.reduce((a,g)=>a+(g.count||0),0);
+        const accounted = groupTotal;
+        const remaining = Math.max(0, (data.total||0) - accounted);
+        document.getElementById('summaryArea').style.display = 'flex';
+        document.getElementById('sumInput').textContent = data.total || 0;
+        document.getElementById('sumCopy').textContent = accounted;
+        document.getElementById('sumDup').textContent = 0;
+        document.getElementById('sumFail').textContent = remaining;
+        const area = document.getElementById('previewArea');
+        area.innerHTML = `
+          <div class="alert alert-info d-flex justify-content-between align-items-center"><div>Found <strong>${data.total || 0}</strong> files</div><div><button id="runAllBtn" class="btn btn-sm btn-success">Run All (${data.total || 0})</button></div></div>
+          <div class="card mb-3">
+            <div class="card-body p-3">
+              <h6 class="mb-2">Input vs Planned Output</h6>
+              <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0">
+                  <thead><tr><th>Metric</th><th>Count</th><th>Notes</th></tr></thead>
+                  <tbody>
+                    <tr><td>Total input files</td><td>${data.total || 0}</td><td>Discovered in source</td></tr>
+                    <tr><td>Planned copies</td><td>${accounted}</td><td>Sum of all groups</td></tr>
+                    <tr><td>Duplicates (est.)</td><td>0</td><td>Computed during run</td></tr>
+                    <tr><td>Failed/Issues (est.)</td><td>${remaining}</td><td>${remaining === 0 ? 'All accounted' : 'Unaccounted in grouping'}</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          <div class="row g-3" id="groupsRow"></div>
+        `;
+        const row = document.getElementById('groupsRow');
+        groups.forEach(g => {
+          const col = document.createElement('div'); col.className = 'col-md-4';
+          const samplesHtml = (g.samples || []).map(s => `<img class="sample-thumb me-1" src="${s}">`).join('');
+          col.innerHTML = `<div class="card card-grouping"><div class="card-body d-flex flex-column"><div class="d-flex justify-content-between"><h6 class="card-title mb-0">${g.name}</h6><span class="badge bg-secondary">${g.count}</span></div><div class="mt-2">${samplesHtml}</div><div class="mt-auto pt-3"><button class="btn btn-sm btn-outline-primary run-group-btn">Run Group</button></div></div></div>`;
+          row.appendChild(col);
+          col.querySelector('.run-group-btn').addEventListener('click', () => {
+            const resolvedDest = getResolvedDest(dest);
+            if (!ensureDestinationReady(resolvedDest)) return;
+            openConfirmModal(source, resolvedDest, g.name, g.count);
+          });
+        });
+
+        document.getElementById('runAllBtn').addEventListener('click', () => {
+          const resolvedDest = getResolvedDest(dest);
+          if (!ensureDestinationReady(resolvedDest)) return;
+          openConfirmModal(source, resolvedDest, 'ALL', data.total || 0);
+        });
+      }
+
+      async function startPreviewFlow(source, dest) {
+        if (!source) { alert('Source required'); return; }
+        if (previewPoll) { clearInterval(previewPoll); previewPoll = null; }
+        setPreviewButtonsDisabled(true);
+        setBusy(true, 'Starting preview...', 'Preparing to scan files');
+        let job = null;
+        try {
+          const resp = await fetch('/api/preview_async', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ source }) });
+          if (!resp.ok) { const t = await resp.text(); throw new Error(t || 'Unable to start preview'); }
+          const data = await resp.json();
+          job = data.job;
+        } catch (err) {
+          setBusy(false);
+          setPreviewButtonsDisabled(false);
+          alert('Preview error: ' + err.message);
+          return;
+        }
+
+        previewPoll = setInterval(async () => {
+          try {
+            const sresp = await fetch(`/api/preview_status?job=${job}`);
+            if (!sresp.ok) {
+              clearInterval(previewPoll);
+              previewPoll = null;
+              setBusy(false);
+              setPreviewButtonsDisabled(false);
+              alert('Preview status error');
+              return;
+            }
+            const st = await sresp.json();
+            const total = st.total || (st.result && st.result.total) || 0;
+            const processed = st.processed || 0;
+            const displayTotal = total || (st.result && st.result.total) || 0;
+            const denom = displayTotal || '...';
+            setBusy(true, 'Building preview', `Reviewing photo ${processed}/${denom}`);
+            if (st.state === 'done' && st.result) {
+              clearInterval(previewPoll);
+              previewPoll = null;
+              setBusy(false);
+              setPreviewButtonsDisabled(false);
+              renderPreview(st.result, source, dest);
+            } else if (st.state === 'error') {
+              clearInterval(previewPoll);
+              previewPoll = null;
+              setBusy(false);
+              setPreviewButtonsDisabled(false);
+              alert('Preview error: ' + (st.error || 'unknown error'));
+            } else if (st.state === 'done') {
+              // done but no payload; stop the spinner to avoid locking the UI
+              clearInterval(previewPoll);
+              previewPoll = null;
+              setBusy(false);
+              setPreviewButtonsDisabled(false);
+            }
+          } catch (e) {
+            // transient fetch error; keep polling
+          }
+        }, 600);
+      }
+
+      // Explorer: load directory listing from server
+      let lastExplorerPath = null; // current directory being shown
+      let selectedExplorerPath = null; // selected item path
+      let selectedDisplayPath = null;
+      async function loadExplorer(path, options = {}) {
+        const { selectCurrent = false } = options;
+        const cleanPath = typeof path === 'string' ? path.trim() : path;
+        const url = '/api/list_dir' + (cleanPath ? '?path=' + encodeURIComponent(cleanPath) : '');
+        const out = document.getElementById('explorerList');
+        const bc = document.getElementById('explorerBreadcrumbs');
+        const disp = document.getElementById('explorerDisplay');
+        const pathInput = document.getElementById('pathInput');
+        let resp;
+        try {
+          resp = await fetch(url);
+        } catch (e) {
+          out.innerText = 'Unable to list folder';
+          return;
+        }
+        if (!resp.ok) { out.innerText = 'Unable to list folder'; return; }
+        const data = await resp.json();
+        lastExplorerPath = data.path;
+        out.innerHTML = '';
+        selectedExplorerPath = data.path;
+        selectedDisplayPath = data.display || data.path;
+        pathInput.value = data.display || data.path;
+        disp.innerText = data.display || data.path;
+        bc.innerHTML = '';
+        const crumbs = data.breadcrumbs || [];
+        crumbs.forEach((crumb, idx) => {
+          const li = document.createElement('li');
+          li.className = 'breadcrumb-item' + (idx === crumbs.length - 1 ? ' active' : '');
+          if (idx === crumbs.length - 1) {
+            li.textContent = crumb.label || crumb.path;
+          } else {
+            li.innerHTML = `<a href="#">${crumb.label || crumb.path}</a>`;
+            li.querySelector('a').addEventListener('click', (e) => {
+              e.preventDefault();
+              loadExplorer(crumb.path);
+            });
+          }
+          bc.appendChild(li);
+        });
+
+        if (!data.entries.length) {
+          const empty = document.createElement('div');
+          empty.className = 'text-muted small';
+          empty.textContent = 'This folder is empty.';
+          out.appendChild(empty);
+          return;
+        }
+
+        data.entries.forEach(e => {
+          const div = document.createElement('div');
+          div.className = 'folder-item d-flex justify-content-between align-items-center';
+          div.innerHTML = `<div>${e.is_dir? '📁' : '📄'} ${e.name}</div><div class='small text-muted'>${e.is_dir? 'Folder' : ''}</div>`;
+          div.addEventListener('click', (evt) => {
+            document.querySelectorAll('.folder-item').forEach(el => el.classList.remove('selected'));
+            div.classList.add('selected');
+            selectedExplorerPath = e.path;
+            selectedDisplayPath = e.display || e.path;
+            document.getElementById('sourceInput').value = e.path;
+            document.getElementById('pathInput').value = selectedDisplayPath;
+            if (e.is_dir) {
+              loadExplorer(e.path, { selectCurrent: true });
+            }
+          });
+          out.appendChild(div);
+        });
+      }
+
+      document.getElementById('openExplorerBtn').addEventListener('click', () => {
+        loadExplorer(lastExplorerPath || '');
+        document.getElementById('explorer').scrollIntoView({behavior:'smooth'});
+      });
+      document.getElementById('homeBtn').addEventListener('click', async () => {
+        const home = await fetch('/api/home').then(r=>r.json());
+        loadExplorer(home.path);
+      });
+      document.getElementById('upBtn').addEventListener('click', () => {
+        if (!lastExplorerPath) return;
+        const parts = lastExplorerPath.replace(/\\/g,'/').split('/').filter(Boolean);
+        if (parts.length > 0) parts.pop();
+        const parent = (lastExplorerPath.startsWith('/') ? '/' : '') + parts.join('/');
+        loadExplorer(parent || '/');
+      });
+      document.getElementById('pathInput').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          const value = e.target.value.trim();
+          loadExplorer(value, { selectCurrent: true });
+        }
+      });
+      document.getElementById('useExplorerSource').addEventListener('click', () => {
+        if (selectedExplorerPath) {
+          document.getElementById('sourceInput').value = selectedExplorerPath;
+        } else if (lastExplorerPath) {
+          document.getElementById('sourceInput').value = lastExplorerPath;
+        }
+      });
+      document.getElementById('destSameBtn').addEventListener('click', () => {
+        const src = document.getElementById('sourceInput').value || '';
+        if (!src) return;
+        document.getElementById('destInput').value = src + '/sorted_output';
+      });
+
+      // load initial explorer root from server-detected home
+      window.addEventListener('DOMContentLoaded', async () => {
+        try {
+          const resp = await fetch('/api/home');
+          if (resp.ok) {
+            const data = await resp.json();
+            loadExplorer(data.path);
+            document.getElementById('sourceInput').value = '';
+            return;
+          }
+        } catch (e) {}
+        loadExplorer();
+      });
+      document.getElementById('previewForm').addEventListener('submit', function (e) {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        const source = fd.get('source');
+        const dest = fd.get('dest') || '';
+        startPreviewFlow(source, dest);
+      });
+
+
+      // Confirmation and run logic
+      let currentRunParams = null;
+      function openConfirmModal(source, dest, groupName, count) {
+        const resolvedDest = getResolvedDest(dest);
+        if (!ensureDestinationReady(resolvedDest)) return;
+        currentRunParams = { source, dest: resolvedDest, groupName };
+        const confirmText = groupName === 'ALL' ? `Start copying all ${count} files?` : `Start copying ${count} files for group ${groupName}?`;
+        document.getElementById('confirmText').textContent = confirmText;
+        document.getElementById('confirmDetails').textContent = `Source: ${source} \nDestination: ${resolvedDest}`;
+        const cm = new bootstrap.Modal(document.getElementById('confirmModal'));
+        cm.show();
+      }
+
+      document.getElementById('confirmRunBtn').addEventListener('click', async function () {
+        const params = currentRunParams;
+        if (!params) return;
+        // close confirm
+        const cmEl = document.getElementById('confirmModal');
+        bootstrap.Modal.getInstance(cmEl).hide();
+        // start progress modal
+        const pm = new bootstrap.Modal(document.getElementById('progressModal'));
+        document.getElementById('progressStatus').textContent = 'Initializing...';
+        document.getElementById('processedCount').textContent = '0';
+        document.getElementById('totalCount').textContent = '/0';
+        document.getElementById('progressBar').style.width = '0%';
+        document.getElementById('currentGroup').textContent = '-';
+        document.getElementById('currentFile').textContent = '-';
+        document.getElementById('copiedCount').textContent = '0';
+        document.getElementById('duplicatesCount').textContent = '0';
+        document.getElementById('failedCount').textContent = '0';
+        document.getElementById('accountedCount').textContent = '-';
+        document.getElementById('remainingCount').textContent = '-';
+        document.getElementById('startTime').textContent = '-';
+        document.getElementById('finishTime').textContent = '-';
+        document.getElementById('speedFps').textContent = '-';
+        document.getElementById('etaSeconds').textContent = '-';
+        document.getElementById('duplicatesFolderPath').textContent = '-';
+        pm.show();
+
+        // start job (include group if provided)
+        document.getElementById('jobDestPath').textContent = params.dest || '-';
+        const payload = { source: params.source, dest: params.dest };
+        if (params.groupName && params.groupName !== 'ALL') payload.group = params.groupName;
+        const resp = await fetch('/api/run_async', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        if (!resp.ok) { const t = await resp.text(); alert('Start error: ' + t); pm.hide(); return; }
+        const data = await resp.json();
+        const job = data.job;
+
+        // poll status
+          const poll = setInterval(async () => {
+          const sresp = await fetch(`/api/status?job=${job}`);
+          if (!sresp.ok) { console.warn('status error'); return; }
+          const st = await sresp.json();
+          lastJobIdForDownload = job; // enable download
+          // counts and progress
+          const total = st.total || 0;
+          const processed = st.processed || 0;
+          document.getElementById('processedCount').textContent = processed;
+          document.getElementById('totalCount').textContent = '/' + total;
+          const pct = total ? Math.round((processed/total)*100) : 0;
+          document.getElementById('progressBar').style.width = pct + '%';
+          document.getElementById('progressStatus').textContent = `State: ${st.state}`;
+          if (st.dest_display || st.dest) {
+            document.getElementById('jobDestPath').textContent = st.dest_display || st.dest;
+          }
+          if (st.duplicates_dir_display || st.duplicates_dir) {
+            document.getElementById('duplicatesFolderPath').textContent = st.duplicates_dir_display || st.duplicates_dir;
+          }
+          document.getElementById('currentGroup').textContent = st.current_group || st.currentGroup || '-';
+          document.getElementById('currentFile').textContent = st.current_file_display || st.current_file || '-';
+          document.getElementById('copiedCount').textContent = st.copied || 0;
+          document.getElementById('duplicatesCount').textContent = st.duplicates || 0;
+          document.getElementById('failedCount').textContent = st.failed || 0;
+          document.getElementById('accountedCount').textContent = st.accounted != null ? st.accounted : '-';
+          document.getElementById('remainingCount').textContent = st.remaining != null ? st.remaining : '-';
+          document.getElementById('errorsCount').textContent = (st.errors || []).length;
+          // times and metrics
+          if (st.start_time) document.getElementById('startTime').textContent = new Date((st.start_time || 0) * 1000).toLocaleString();
+          if (st.finished_time) document.getElementById('finishTime').textContent = new Date((st.finished_time || 0) * 1000).toLocaleString();
+          document.getElementById('speedFps').textContent = st.speed_fps != null ? st.speed_fps : '-';
+          document.getElementById('etaSeconds').textContent = st.eta_seconds != null ? st.eta_seconds : '-';
+          // show errors list link if errors present
+          const errs = st.errors || [];
+          if (errs.length) {
+            document.getElementById('showErrorsLink').style.display = 'inline';
+            const el = document.getElementById('errorsList');
+            el.innerHTML = errs.map(e => `<div>${e}</div>`).join('');
+            document.getElementById('errorsCount').textContent = errs.length;
+          } else {
+            document.getElementById('showErrorsLink').style.display = 'none';
+            document.getElementById('errorsList').style.display = 'none';
+          }
+          // reveal download button when job is active
+          if (job && (st.state === 'running' || st.state === 'pending' || st.state === 'done')) {
+            downloadBtn.style.display = 'inline-block';
+            if (statusLinkBtn) {
+              statusLinkBtn.style.display = 'inline-block';
+              statusLinkBtn.href = `/api/status?job=${job}`;
+            }
+          }
+          if (st.state === 'done' || st.state === 'error') {
+            clearInterval(poll);
+            document.getElementById('progressStatus').textContent = st.state === 'done' ? 'Completed' : ('Error: ' + (st.error||''));
+            // set finish time if not set
+            if (!st.finished_time) {
+              document.getElementById('finishTime').textContent = new Date().toLocaleString();
+            }
+          }
+        }, 1000);
+      });
+
+      // helper to show/hide errors
+      document.getElementById('showErrorsLink').addEventListener('click', (e) => {
+        e.preventDefault();
+        const el = document.getElementById('errorsList');
+        if (el.style.display === 'none') {
+          el.style.display = 'block';
+          document.getElementById('showErrorsLink').textContent = '(hide)';
+        } else {
+          el.style.display = 'none';
+          document.getElementById('showErrorsLink').textContent = '(view)';
+        }
+      });
+
+      // attach download button behavior when modal changes (will be wired per-run)
+      let lastJobIdForDownload = null;
+      // create a Download button dynamically in the modal footer
+      const progressModalFooter = document.querySelector('#progressModal .modal-footer');
+      const downloadBtn = document.createElement('button');
+      downloadBtn.className = 'btn btn-outline-primary';
+      downloadBtn.textContent = 'Download Summary';
+      downloadBtn.style.display = 'none';
+      const statusLinkBtn = document.getElementById('statusLinkBtn');
+      downloadBtn.addEventListener('click', async () => {
+        if (!lastJobIdForDownload) return;
+        const data = await fetchJobJson(lastJobIdForDownload);
+        if (!data) { alert('Unable to fetch job JSON'); return; }
+        downloadJson(data, `photo_sorter_job_${lastJobIdForDownload}.json`);
+      });
+      progressModalFooter.appendChild(downloadBtn);
+    </script>
+  </body>
+</html>

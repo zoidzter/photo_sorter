@@ -1,0 +1,24 @@
+{
+  "location_aliases": {
+    "new york": "NYC",
+    "monkstown": "Dublin",
+    "home": "Home"
+  },
+  "event_overrides": {
+    "Thanksgiving": "FamilyThanksgiving",
+    "Christmas": "Xmas"
+  },
+  "custom_events": [
+    {
+      "name": "HawaiiTrip",
+      "start": "2035-07-01",
+      "end": "2035-07-10"
+    },
+    {
+      "name": "SkiWeekend",
+      "start": "2035-02-14",
+      "end": "2035-02-17",
+      "location": "Aspen"
+    }
+  ]
+}
